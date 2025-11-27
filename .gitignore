@@ -1,0 +1,13 @@
+__pycache__/
+.pytest_cache/
+*venv*/
+*.hf_cache/
+*.swp
+/temp
+/moondream-2b-2025-04-14-4bit
+/VLM_image
+/audio
+/images
+/YOLO
+tests/en_US-lessac-high.onnx.json
+tests/en_US-lessac-high.onnx
