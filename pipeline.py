@@ -29,6 +29,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from tkinter.filedialog import test
 from typing import List, Optional, Sequence, Tuple, Union
 
 logger = logging.getLogger("smart_glass.pipeline")
@@ -180,7 +181,7 @@ class NavigationWorker:
     def __init__(
         self,
         esp_host: str,
-        video_port: int,
+        video_socket: socket.socket,
         vibro_port: int,
         model_path: str,
         *,
@@ -191,7 +192,7 @@ class NavigationWorker:
         nav_step_delay: float = 0.1,
     ) -> None:
         self.esp_host = esp_host
-        self.video_port = video_port
+        self.video_socket = video_socket
         self.vibro_port = vibro_port
         self.model_path = model_path
         self.nav_host = nav_host
@@ -201,6 +202,7 @@ class NavigationWorker:
         self.nav_step_delay = nav_step_delay
         self._yolo_model = None
         self._nav_thread: Optional[threading.Thread] = None
+        self._yolo_thread: Optional[threading.Thread] = None
         self._nav_stop = threading.Event()
         self._nav_sock: Optional[socket.socket] = None
         self._read_buf = b""
@@ -274,42 +276,63 @@ class NavigationWorker:
         buffer.push(f"Trying navigation to {destination}.")
         if not self._start_nav_stream(destination, buffer):
             buffer.push(f"Stay on course towards {destination}.")
-        self._run_obstacle_detection(buffer)
 
     def _start_nav_stream(self, destination: str, buffer: TextBuffer) -> bool:
         """Start navigation instruction streaming thread."""
+        # Preload YOLO model
+        self._ensure_model()
         if not self.nav_host or not self.nav_port:
             raise RuntimeError("[Nav] Navigation host/port not configured")
         self._stop_nav_stream()
         stop_event = threading.Event()
         self._nav_stop = stop_event
-        thread = threading.Thread(
+        nav_thread = threading.Thread(
             target=self._stream_nav_instructions,
             args=(destination, buffer, stop_event),
             daemon=True,
         )
-        self._nav_thread = thread
-        thread.start()
+        self._nav_thread = nav_thread
+        nav_thread.start()
+
+        yolo_thread = threading.Thread(
+            target=self._yolo_loop,
+            args=(buffer, stop_event),
+            daemon=True,
+        )
+        self._yolo_thread = yolo_thread
+        yolo_thread.start()
         return True
 
     def _stop_nav_stream(self) -> None:
         """Stop navigation instruction streaming thread."""
         logger.info("Stop streaming navigation instructions...")
-        if self._nav_thread and self._nav_thread.is_alive():
+        try:
             self._nav_stop.set()
-            if self._nav_sock:
-                try:
-                    self._nav_sock.shutdown(socket.SHUT_RDWR)
-                except Exception:
-                    pass
-                try:
-                    self._nav_sock.close()
-                except Exception:
-                    pass
-                finally:
-                    self._nav_sock = None
-            # self._nav_thread.join(timeout=1.0)
+        except Exception:
+            pass
+        
+        if self._nav_sock:
+            try:
+                self._nav_sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                self._nav_sock.close()
+            except Exception:
+                pass
+            finally:
+                self._nav_sock = None
+        
+        nav_thread = self._nav_thread
+        if nav_thread and nav_thread.is_alive() and threading.current_thread() is not nav_thread:
+            nav_thread.join(timeout=1.0)
         self._nav_thread = None
+
+        yolo_thread = self._yolo_thread
+        if yolo_thread and yolo_thread.is_alive() and threading.current_thread() is not yolo_thread:
+            yolo_thread.join(timeout=1.0)
+        self._yolo_thread = None
+
         self._nav_stop = threading.Event()
 
     def _readline(self, sock_obj: socket.socket) -> str:
@@ -359,8 +382,12 @@ class NavigationWorker:
                             buffer.push(text)
                         if event == "error":
                             logger.error(f"[Nav] Navigation error: {text}")
-                            buffer.push(text)
+                            if text:
+                                buffer.push(text)
+                            stop_event.set()
+                            break
                         if event == "done":
+                            stop_event.set()
                             break
                     except json.JSONDecodeError:
                         logger.warning("[Nav] JSON decode failed for line: %r", line)
@@ -375,35 +402,54 @@ class NavigationWorker:
 
     def _run_obstacle_detection(self, buffer: TextBuffer) -> None:
         """Run obstacle detection and haptic feedback loop once."""
+        logger.info("[Nav] Running obstacle detection...")
         if not self._YOLO:
             logger.error(f"[Nav] Ultralytics YOLO not available.")
             return
             # raise RuntimeError("[Nav] Ultralytics YOLO not available")
-        self._ensure_model()
         if not self._yolo_model:
             logger.error("[Nav] YOLO model load failed.")
             return
             # raise RuntimeError("[Nav] YOLO model load failed")
         try:
-            with socket.create_connection((self.esp_host, self.video_port), timeout=5.0) as vs:
-                frame = _recv_mjpeg_frame(vs)
+            frame = _recv_mjpeg_frame(self.video_socket)
             if frame is None:
                 logger.debug("No navigation frame received")
                 return
             results = self._yolo_model(frame, conf=0.25, iou=0.45, verbose=False)
             result = results[0]
             left, right, summary = self._derive_haptics(result, frame.shape)
-            # if summary:
-            #     buffer.push("Obstacles: " + ", ".join(summary))
+            logger.info(f"[Nav] Obstacle detection: Left={left} Right={right} Summary={'; '.join(summary)}")
             self._send_vibro(left, right)
         except Exception as exc:
             logger.error(f"[Nav] Obstacle detection failed: {exc}", exc)
             # raise RuntimeError(f"[Nav] Obstacle detection failed: {exc}") from exc
 
     def wait_for_stream(self, timeout: Optional[float] = None) -> None:
-        thread = self._nav_thread
-        if thread and thread.is_alive():
-            thread.join(timeout)
+        nav_thread = self._nav_thread
+        if nav_thread and nav_thread.is_alive():
+            nav_thread.join(timeout)
+        
+        yolo_thread = self._yolo_thread
+        if yolo_thread and yolo_thread.is_alive():
+            yolo_thread.join(timeout)
+
+
+        
+    def _yolo_loop(self, buffer: TextBuffer, stop_event: threading.Event) -> None:
+        """Background loop: repeatedly run YOLO obstacle detection until stop_event is set."""
+        logger.info("[Nav] YOLO obstacle-detection loop started.")
+        try:
+            while not stop_event.is_set():
+                self._run_obstacle_detection(buffer)
+
+                # Sleep a bit between frames, but allow fast shutdown by checking stop_event.
+                if stop_event.wait(self.nav_step_delay):
+                    break
+        finally:
+            logger.info("[Nav] YOLO obstacle-detection loop stopped.")
+    
+
 
 # ---------------------------------------------------------------------------
 # Scene description block (Moondream VLM) with unload
@@ -412,12 +458,12 @@ class VLMDescriber:
     def __init__(
         self,
         host: str,
-        video_port: int,
+        video_socket: socket.socket,
         unload: bool = False,
         model_dir: Optional[Union[str, Path]] = None,
     ) -> None:
         self.host = host
-        self.video_port = video_port
+        self.video_socket = video_socket
         self.unload = unload
         self.model_dir = Path(model_dir).expanduser() if model_dir else DEFAULT_MOONDREAM_DIR
         self._env_ready = _prepare_moondream_env(self.model_dir)
@@ -454,8 +500,7 @@ class VLMDescriber:
         # Grab one frame (optional)
         frame_np = None
         try:
-            with socket.create_connection((self.host, self.video_port), timeout=5.0) as vs:
-                frame_np = _recv_mjpeg_frame(vs)
+            frame_np = _recv_mjpeg_frame(self.video_socket)
         except Exception:
             logger.warning("[VLM] Frame receive failed; proceeding without image")
         try:
@@ -610,7 +655,7 @@ class SpeechOutput:
 class SmartGlassPipeline:
     esp_host: str
     audio_port: int
-    video_port: int
+    video_socket: socket.socket
     mp3_port: int
     vibro_port: int
     timeout: float
@@ -628,7 +673,7 @@ class SmartGlassPipeline:
     def __post_init__(self):
         self.nav = NavigationWorker(
             self.esp_host,
-            self.video_port,
+            self.video_socket,
             self.vibro_port,
             self.yolo_model,
             nav_host=self.nav_host,
@@ -639,7 +684,7 @@ class SmartGlassPipeline:
         )
         self.vlm = VLMDescriber(
             self.esp_host,
-            self.video_port,
+            self.video_socket,
             unload=False,
             model_dir=self.moondream_dir,
         )
@@ -721,17 +766,30 @@ class SmartGlassPipeline:
         except KeyboardInterrupt:
             logger.info("[Pipeline] Ctrl+C received, shutting down Smart Glass pipeline...")
         finally:
-            # Stop any ongoing navigation stream
-            try:
-                self.nav._stop_nav_stream()
-            except Exception as exc:
-                logger.debug("[Pipeline] Error while stopping nav stream during shutdown: %s", exc)
-
-            # *** IMPORTANT PART: unload VLM model from GPU memory ***
-            try:
-                self.vlm._free()
-            except Exception as exc:
-                logger.debug("[Pipeline] Error while unloading VLM model: %s", exc)
+            self.shutdown()
+    
+    def shutdown(self):
+        try:
+            self.nav._stop_nav_stream()
+        except Exception as exc:
+            logger.debug("[Pipeline] Navigation worker shutdown failed: %s", exc)
+        
+        try:
+            if self.speaker:
+                self.speaker.stop()
+        except Exception as exc:
+            logger.debug("[Pipeline] Speech output shutdown failed: %s", exc)
+        
+        try:
+            if self.video_socket:
+                self.video_socket.close()
+        except Exception as exc:
+            logger.debug("[Pipeline] Video socket close failed: %s", exc)
+        
+        try:
+            self.vlm._free()
+        except Exception as exc:
+            logger.debug("[Pipeline] VLM free failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -772,10 +830,12 @@ def main():
         level=getattr(logging, args.log.upper(), logging.INFO),
         handlers=[handler],
     )
+    
+    video_socket = socket.create_connection((args.esp_host, args.video_port), timeout=5.0)
 
     pipeline = build_pipeline(esp_host=args.esp_host,
                               audio_port=args.audio_port,
-                              video_port=args.video_port,
+                              video_socket=video_socket,
                               mp3_port=args.mp3_port,
                               vibro_port=args.vibro_port,
                               timeout=args.timeout,
@@ -789,32 +849,41 @@ def main():
     pipeline.idle_sleep = args.idle_sleep
     pipeline.iter_sleep = args.iter_sleep
 
-    # Play Startup music
-    music_path = "hajimi.mp3"
     try:
-        pipeline.speaker.play_file(music_path)
-    except Exception as exc:
-        logger.error("[Startup] Failed to play startup sound: %s", exc)
+        # Play Startup music
+        #music_path = "audio/hajimi.mp3"
+        #try:
+        #    pipeline.speaker.play_file(music_path)
+        #except Exception as exc:
+        #    logger.error("[Startup] Failed to play startup sound: %s", exc)
 
-    # Preload VLM model
-    vlm_ready = False
-    try:
-        pipeline.vlm._load()
-        logger.info("[VLM] Preloading Moondream model ...")
-        vlm_ready = True
-    except Exception as exc:
-        logger.error("[VLM] Failed to preload Moondream model: %s", exc)
-        pipeline.buffer.push("Scene description model failed to load.")
-    if vlm_ready:
-        pipeline.buffer.push("Welcome to Smart Glass! I am Hajimi!")
-        pipeline._flush()
+        # Preload VLM model
+        vlm_ready = False
+        try:
+            pipeline.vlm._load()
+            logger.info("[VLM] Preloading Moondream model ...")
+            vlm_ready = True
+        except Exception as exc:
+            logger.error("[VLM] Failed to preload Moondream model: %s", exc)
+            pipeline.buffer.push("Scene description model failed to load.")
+        if vlm_ready:
+            pipeline.buffer.push("Welcome to Smart Glass! I am Hajimi!")
+            pipeline._flush()
 
-    if args.loop:
-        pipeline.run_loop()
-    else:
-        pipeline.process_once()
-        pipeline.nav.wait_for_stream(timeout=args.nav_timeout)
-        pipeline._flush()
+        if args.loop:
+            pipeline.run_loop()
+        else:
+            pipeline.process_once()
+            pipeline.nav.wait_for_stream(timeout=args.nav_timeout)
+            pipeline._flush()
+    
+    except KeyboardInterrupt:
+        logger.info("Ctrl+C received, exiting...")
+    finally:
+        try:
+            pipeline.shutdown()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

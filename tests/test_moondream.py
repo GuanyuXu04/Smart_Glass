@@ -115,11 +115,16 @@ def get_model() -> Any:
 
     t0 = time.time()
     print(f"[Moondream] loading model from {MODEL_DIR} ...")
+    max_memory = {
+        0: "4.0GiB",   # GPU 0 limit
+        "cpu": "16GiB" # optional, for CPU offload
+    }
     _MODEL = AutoModelForCausalLM.from_pretrained(
         str(MODEL_DIR),
         trust_remote_code=True,
         local_files_only=True,
         device_map="auto" if torch.cuda.is_available() else None,  # GPU if present
+        max_memory=max_memory
     )
     print(f"[Moondream] model ready in {time.time() - t0:.2f}s")
     return _MODEL
