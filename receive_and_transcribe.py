@@ -11,6 +11,7 @@ import wave
 from dataclasses import dataclass
 from typing import Optional
 import time
+from pathlib import Path
 
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
@@ -89,7 +90,8 @@ def receive_and_transcribe(
     port: int = DEFAULT_PORT,
     *,
     timeout: float = DEFAULT_TIMEOUT,
-    model_name: str = DEFAULT_MODEL
+    model_name: str = DEFAULT_MODEL,
+    save_dir: Optional[str] = None
 ) -> Optional[str]:
     """Connect to the ESP32 stream, convert it to WAV, transcribe, and return text."""
 
@@ -102,8 +104,16 @@ def receive_and_transcribe(
             if pcm_length <= 0:
                 raise AudioStreamError(f"Invalid PCM length: {pcm_length}")
             pcm_data = read_exact(sock, pcm_length)
-
+        
         wav_bytes = pcm_to_wav_bytes(pcm_data)
+
+        if save_dir is not None:
+            ts = time.strftime("%Y%m%d-%H%M%S")
+            save_path = Path(save_dir)
+            save_path.mkdir(parents=True, exist_ok=True)
+            wav_path = save_path / f"audio_{ts}.wav"
+            wav_path.write_bytes(wav_bytes)
+
         return _transcribe_wav_bytes(model, wav_bytes)
     except (OSError, AudioStreamError, ValueError) as exc:
         print(f"[{time.time()}] Waiting for audio from ESP ...")

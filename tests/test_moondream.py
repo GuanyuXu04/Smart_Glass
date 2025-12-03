@@ -116,7 +116,7 @@ def get_model() -> Any:
     t0 = time.time()
     print(f"[Moondream] loading model from {MODEL_DIR} ...")
     max_memory = {
-        0: "4.0GiB",   # GPU 0 limit
+        0: "6.0GiB",   # GPU 0 limit
         "cpu": "16GiB" # optional, for CPU offload
     }
     _MODEL = AutoModelForCausalLM.from_pretrained(

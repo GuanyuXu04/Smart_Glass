@@ -11,3 +11,8 @@ __pycache__/
 /YOLO
 tests/en_US-lessac-high.onnx.json
 tests/en_US-lessac-high.onnx
+/streamed_audio
+/received_audio
+/web_image
+/nav_captures
+yolo_log.csv

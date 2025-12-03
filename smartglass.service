@@ -1,0 +1,15 @@
+[Unit]
+Description=Smart Glass Pipeline Service
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/team15/Documents/SmartGlass
+ExecStart=/bin/bash /home/team15/Documents/SmartGlass/run_pipeline.sh
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
