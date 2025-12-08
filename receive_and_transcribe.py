@@ -1,5 +1,4 @@
-"""Audio reception + transcription block used by the Smart Glass pipeline."""
-
+# Receive audio stream from ESP32 and transcribe with Vosk speech recognition.
 from __future__ import annotations
 
 import io

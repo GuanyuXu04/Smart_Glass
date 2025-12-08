@@ -1,4 +1,4 @@
-# tests/test_moondream.py
+# Load Moondream VLM locally (offline) for image description tasks.
 from __future__ import annotations
 from typing import Any, Optional
 import os
@@ -7,17 +7,14 @@ import shutil
 from pathlib import Path
 import glob
 
-# === 1) Point to your fully local model folder ===
 MODEL_DIR = Path("/home/team15/Documents/SmartGlass/moondream-2b-2025-04-14-4bit").resolve()
 
-# === 2) Force offline + project-local cache so this works from ANY shell ===
+# Force offline mode + project-local cache
 CACHE_ROOT = (MODEL_DIR.parent / ".hf_cache").resolve()
 os.environ.setdefault("HF_HOME", str(CACHE_ROOT))
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
-
-# (Optional CUDA tweaks)
 # os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:64")
 # os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
 

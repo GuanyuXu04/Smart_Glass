@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""ESP32 simulator for Smart Glass Jetson pipeline.
-
-Provides 4 TCP services compatible with README contract:
-  - 1000: Wake audio (WAV header + PCM stream)
-  - 2000: MJPEG frames (length-prefixed JPEG)
-  - 3000: MP3 sink (accepts bytes and discards)
-  - 4000: Haptic commands sink (ASCII LLLRRR / XXXYYY)
-
-Use this to exercise the pipeline on a dev machine without real hardware:
-  python3 esp32_simulator.py --bind 127.0.0.1
-Then run the pipeline with --host 127.0.0.1
-"""
+# Simulate ESP32 for testing: audio, video, MP3, haptic services on localhost.
 from __future__ import annotations
 
 import argparse
@@ -25,11 +14,11 @@ import wave
 import audioop
 
 try:
-    import cv2  # type: ignore
-    import numpy as np  # type: ignore
-except Exception:  # optional; video falls back to blank frames
-    cv2 = None  # type: ignore
-    np = None  # type: ignore
+    import cv2
+    import numpy as np
+except Exception:
+    cv2 = None
+    np = None
 
 AUDIO_PORT = 1000
 VIDEO_PORT = 2000

@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
-"""Smart Glass minimal runtime pipeline.
-
-Implements the contract from README using existing helper scripts:
-  1. Receive + transcribe audio (port 1000) via receive_and_transcribe.receive_and_transcribe
-  2. Classify intent via classify_intent.classify
-  3. Navigation worker (YOLO + haptics) for intent 1
-  4. Scene description worker (Moondream VLM) for intent 2 with aggressive GPU memory release
-  5. Speech output: text buffered -> (optional) MP3 stream (port 3000) and console log
-
-All heavy modules are loaded lazily and released ASAP to preserve Jetson Nano memory.
-If a dependency is missing (ultralytics / transformers / flite), safe stubs are used.
-
-CLI:
-  python3 pipeline.py --esp-host 192.168.4.1 --loop --nav-host 127.0.0.1 --log INFO
-"""
+# Main orchestrator: receive audio, transcribe, classify intent, run navigation or VLM, stream speech.
+# Lazy-loads heavy modules (YOLO, Moondream) and aggressively releases GPU memory.
 from __future__ import annotations
 
 import argparse
@@ -38,6 +25,7 @@ from pathlib import Path
 from tkinter.filedialog import test
 from typing import List, Optional, Sequence, Tuple, Union
 import numpy as np
+
 logger = logging.getLogger("smart_glass.pipeline")
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True,max_split_size_mb:64")
 os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
@@ -45,9 +33,6 @@ os.environ.setdefault("CUDA_MODULE_LOADING", "LAZY")
 DEFAULT_MOONDREAM_DIR = Path("/home/team15/Documents/SmartGlass/moondream-2b-2025-04-14-4bit").resolve()
 TEMP_SPEECH_DIR = (Path(__file__).resolve().parent / "temp").resolve()
 TEMP_SPEECH_DIR.mkdir(parents=True, exist_ok=True)
-
-# from jetson_utils import loadImage, cudaFromNumpy
-# _HAS_JETSON_UTILS = True
 
 from tests.test_tts import flite_tts, piper_tts  # type: ignore
 from tests.test_audio_transmit import convert_sample_rate  # type: ignore

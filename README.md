@@ -1,4 +1,10 @@
-# Smart Glass System Contract
+# INSIGHT: In-device Navigation and Scene Interpretation Glasses for Human-centered Travel
+
+**EECS 473 Project** – A voice-activated smart glasses system for low-vision navigation and scene understanding.
+
+---
+
+## Overview
 
 A Jetson Nano base station and an ESP32-powered smart-glass headset collaborate to provide voice-activated navigation and scene-understanding assistance. The ESP32 captures sensor input and performs immediate actuation, while the Jetson aggregates perception, decision making, and response generation.
 
@@ -55,6 +61,12 @@ Each software block must be composable so they can share a `TextBuffer` and run 
   - If on path, enqueue turn-by-turn guidance into the `TextBuffer`.
   - If off path, enqueue a deviation warning and recompute.
   - Pull the latest frame from port `2000`, run obstacle detection, and send the resulting haptic command over port `4000` using the `LLLRRR` format.
+
+**YOLO Detection Sample Output:**
+
+![YOLO Detection Output](output.jpg)
+
+*Obstacle detection visualization: bounding boxes overlay detected persons, vehicles, and other hazards.*
 
 ### 4. `vlm_inference`
 
@@ -217,8 +229,12 @@ Optional Jetson-specific dependencies that are not available on PyPI:
 
 > Tip: Execute these scripts individually after installing their prerequisites to confirm each dependency is functional before running the full pipeline.
 
-### Next Enhancements (Optional)
-- Add proper route planner integration (Valhalla stub replacement).
-- Maintain a short-lived Moondream cache with idle timeout instead of per-intent unload for faster consecutive descriptions.
-- Stream real TTS synthesis as MP3 instead of canned sample.
-- Add unit tests for the new pipeline adapters.
+---
+
+## References
+
+- GPS and routing demo adapted from [OSM-Valhalla-Routing-Demo](https://github.com/janChen0310/OSM-Valhalla-Routing-Demo)
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) file for details.

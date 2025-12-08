@@ -1,23 +1,20 @@
 #!/bin/bash
+# Set up systemd service for Smart Glass pipeline on NVIDIA Orin Nano.
 
-# Make the runner script executable
 chmod +x /home/team15/Documents/SmartGlass/run_pipeline.sh
 
-# Copy the service file to systemd directory
-echo "Installing smartglass.service to /etc/systemd/system/..."
+# Install systemd service
+echo "Installing smartglass.service..."
 sudo cp /home/team15/Documents/SmartGlass/smartglass.service /etc/systemd/system/
 
-# Reload systemd daemon
-echo "Reloading systemd daemon..."
+# Reload and enable
+echo "Enabling service..."
 sudo systemctl daemon-reload
-
-# Enable the service to start on boot
-echo "Enabling smartglass.service..."
 sudo systemctl enable smartglass.service
 
-# Start the service immediately (optional)
-echo "Starting smartglass.service..."
+# Start immediately
+echo "Starting service..."
 sudo systemctl start smartglass.service
 
-echo "Status of smartglass.service:"
+echo "Status:"
 sudo systemctl status smartglass.service

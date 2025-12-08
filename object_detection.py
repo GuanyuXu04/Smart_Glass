@@ -1,3 +1,4 @@
+# Real-time obstacle detection with YOLO, send haptic feedback to ESP32.
 import socket
 import struct
 import time
@@ -7,20 +8,17 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-# -------------------- Config --------------------
-HOST = "192.168.4.1"         # ESP host
-VIDEO_PORT = 2000            # ESP port
-VIBRO_PORT = 4000            # ESP TX port
-MODEL_PATH = "YOLO/yolo11n.engine"  # TensorRT engine (or .pt if you prefer)
+HOST = "192.168.4.1"
+VIDEO_PORT = 2000
+VIBRO_PORT = 4000
+MODEL_PATH = "YOLO/yolo11n.engine"
 CONF_THRES = 0.25
 IOU_THRES = 0.45
 
-# Side split (fractions of width). [0,LEFT) => left, (RIGHT,1] => right, middle triggers both (reduced)
 LEFT_EDGE = 1/3
 RIGHT_EDGE = 2/3
-MIDDLE_SCALE = 0.75  # if in middle, send to both sides at this scale
-GAMMA = 0.8                    # curve shaping for speed mapping (0.6~1.2 is reasonable)
-# Classes considered "obstacles" (Ultralytics default COCO names, lowercase)
+MIDDLE_SCALE = 0.75
+GAMMA = 0.8
 OBSTACLE_CLASSES = {
     "person", "bicycle", "car", "motorcycle", "bus", "truck", "train",
     "stroller", "wheelchair", "traffic light", "stop sign", "bench",
@@ -29,20 +27,18 @@ OBSTACLE_CLASSES = {
 
 os.makedirs("temp", exist_ok=True)
 
-# ---------------- MJPEG Receiver ----------------
 def recvall(sock, n):
-    """Receive exactly n bytes (or None on failure)."""
+    # Read exactly n bytes from socket
     buf = b""
     while len(buf) < n:
         pkt = sock.recv(n - len(buf))
         if not pkt:
-            print("Frame length mismatch / connection closed.")
             return None
         buf += pkt
     return buf
 
 def read_mjpeg_frame(sock):
-    """Read one MJPEG frame: 4-byte big-endian length + payload (JPEG)."""
+    # Read MJPEG: 4-byte big-endian length + JPEG payload
     hdr = recvall(sock, 4)
     if hdr is None:
         return None
@@ -50,42 +46,23 @@ def read_mjpeg_frame(sock):
     data = recvall(sock, length)
     if data is None:
         return None
-    # Decode JPEG into BGR image
     img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     return img
 
 def send_vibro_speed(sock, left, right):
-    """
-    Send left/right vibro speeds to ESP as 'XXXYYY'.
-    - XXX: left speed, 3 digits, zero-padded
-    - YYY: right speed, 3 digits, zero-padded
-    Example: left=5, right=42 -> '005042'
-    """
-    # clamp to 0..999 just to be safe
+    # Send LLLRRR format: 3-digit left speed + 3-digit right speed
     left = max(0, min(int(left), 999))
     right = max(0, min(int(right), 999))
-
-    msg = f"{left:03d}{right:03d}"  # e.g. '075090'
+    msg = f"{left:03d}{right:03d}"
     sock.sendall(msg.encode("ascii"))
 
-#-----------------Compute Vibration Motor Speed ------------------------------#
 def area_to_speed(area_frac, gamma=GAMMA):
-    """
-    area_frac: bbox_area / frame_area in [0,1].
-    Returns speed (0..100).
-    then bigger boxes => weaker speed.
-    """
+    # Convert bbox area to vibration speed (0-100)
     area_frac = float(np.clip(area_frac, 0.0, 1.0))
-    base = area_frac                # big area -> big base
-    # Shape curve and scale to 0..100
-    return int(round((base ** gamma) * 100))
+    return int(round((area_frac ** gamma) * 100))
 
 def vibro_from_detections(result, frame_shape):
-    """
-    Compute left/right vibro speeds based on detections.
-    - Take the maximum speed per side.
-    - Middle region sends to both sides with a scale factor.
-    """
+    # Compute left/right vibro speeds based on detected obstacles
     H, W = frame_shape[:2]
     frame_area = float(H * W)
 

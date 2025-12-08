@@ -1,9 +1,9 @@
+# Fuzzy-match destination names and return GPS coordinates.
 from typing import Dict, Optional, Tuple
 import difflib
 
 LatLon = Tuple[float, float]
 
-# Approximate coordinates for U-M North Campus landmarks (may be refined)
 _PLACES: Dict[str, LatLon] = {
     "Pierpont Commons": (42.29138557282375, -83.71760893100681),
     "Duderstadt Center": (42.29155630955083, -83.71624040501234),
@@ -32,16 +32,15 @@ _PLACES: Dict[str, LatLon] = {
 _PLACES_CI: Dict[str, LatLon] = {name.casefold(): coord for name, coord in _PLACES.items()}
 
 def safe_destination(name: str, threshold: float = 0.5) -> Optional[LatLon]:
-    """Case-insensitive lookup of a place name."""
+    # Find destination with fuzzy matching (case-insensitive)
     if not name:
         return None
     query = name.strip().casefold()
 
-    # Exact match
     if query in _PLACES_CI:
         return query
     
-    # Fuzzy match
+    # Fuzzy match if exact lookup fails
     best_key: Optional[str] = None
     best_score = 0.0
 

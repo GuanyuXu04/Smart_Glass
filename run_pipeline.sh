@@ -1,7 +1,8 @@
 #!/bin/bash
-# Switch internet connection (running as root)
+# Auto-connect to ESP32 WiFi and run Smart Glass pipeline on NVIDIA Orin Nano.
+
+# Connect to fanghb (ESP32-hosted WiFi network)
 nmcli connection up fanghb
 
-# Run the pipeline script as user team15
-# We use 'su - team15 -c' to ensure we load the user's environment (PATH, python packages, etc.)
+# Run pipeline as team15 user with full environment
 su - team15 -c "cd /home/team15/Documents/SmartGlass && /usr/bin/python3 pipeline.py --esp-host 192.168.4.1 --loop --nav-host 127.0.0.1 --log INFO > /home/team15/pipeline.log 2>&1"

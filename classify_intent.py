@@ -1,28 +1,6 @@
 #!/usr/bin/env python3
-"""
-intent_classifier.py
-
-Lightweight hybrid intent classifier for navigation vs scene description.
-- Step 1: fast regex to catch obvious cases
-- Step 2: tiny embedding model (all-MiniLM-L6-v2, ~90MB) for fuzzy/zero-shot decisions
-
-Outputs (stdout):
-  1, <destination>    # navigation
-  2, <original input> # description
-  0                   # unclear
-
-Usage:
-  python3 intent_classifier.py "I want to go to the EECS building"
-  python3 intent_classifier.py --interactive
-
-Dependencies:
-  pip install sentence-transformers regex
-
-Notes:
-  * No training required. Works offline once the model is cached.
-  * Memory footprint << 500MB (model ~90MB + Python overhead)
-"""
-
+# Classify user utterances: navigation (1), scene description (2), or unclear (0).
+# Uses regex patterns + lightweight embedding model for zero-shot classification.
 import argparse
 import sys
 import re
@@ -132,6 +110,7 @@ MARGIN = 0.04              # require this gap between top-1 and runner-up
 
 class MiniLMJudge:
     def __init__(self):
+        # Load sentence-transformers for embedding-based classification
         if not _SBERT_AVAILABLE:
             self.model = None
             return
@@ -140,19 +119,13 @@ class MiniLMJudge:
         self.desc_emb = self.model.encode(DESC_PROTOTYPES, normalize_embeddings=True)
 
     def judge(self, text: str) -> Tuple[int, Optional[str]]:
-        """Return (intent_id, payload or None) following the required format.
-        1 => navigation, payload is destination
-        2 => description, payload is original input
-        0 => unclear
-        """
-        print("Judging with MiniLM")
+        # Classify intent: 1=nav, 2=description, 0=unclear
         if not self.model:
             return 0, None
         q = self.model.encode([text], normalize_embeddings=True)
-        # Cosine similarity vs prototype banks
         nav_score = float(util.cos_sim(q, self.nav_emb).max())
         desc_score = float(util.cos_sim(q, self.desc_emb).max())
-        # Decide with thresholding
+        
         if max(nav_score, desc_score) < SIM_THRESHOLD:
             return 0, None
         if nav_score - desc_score > MARGIN:
@@ -160,14 +133,11 @@ class MiniLMJudge:
             return (1, dest) if dest else (0, None)
         if desc_score - nav_score > MARGIN:
             return 2, text
-        # Too close -> unclear
         return 0, None
 
 
 def infer_destination_fallback(text: str) -> Optional[str]:
-    """If NLP thinks it's navigation but regex couldn't extract the destination,
-    try a very lightweight fallback: take the span after the last 'to'/'toward(s)'.
-    """
+    # Extract destination from "to <place>" pattern if regex failed
     m = re.search(r"\b(?:to|toward|towards)\s+([^,.!?]+)", text, flags=re.IGNORECASE)
     if m:
         dest = m.group(1)

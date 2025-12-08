@@ -1,33 +1,7 @@
 #!/usr/bin/env python3
-"""
-flite_tts.py
-------------
-A simple Python wrapper for the Flite (Festival Lite) text-to-speech engine.
-
-Usage examples:
-    # Speak directly from text
-    python3 flite_tts.py --text "Hello from Jetson Nano"
-
-    # Save to a file
-    python3 flite_tts.py --text "Saving this to a file" --output output.wav
-
-    # Use a different voice
-    python3 flite_tts.py --text "I am the SLT voice" --voice slt
-
-    # Use text from a file
-    python3 flite_tts.py --input textfile.txt --voice awb
-
-Arguments:
-    --text      The text to convert to speech (mutually exclusive with --input)
-    --input     Path to a text file whose contents will be converted
-    --output    Optional output WAV file path. If omitted, audio is played directly.
-    --voice     Optional Flite voice (e.g., kal, awb, rms, slt). Default = kal
-"""
-
+# Text-to-speech wrapper supporting Flite and Piper engines.
 import os
-### Surpress Warnings from ONNX Runtime, maynot be necessary ###
-os.environ["ORT_LOG_SEVERITY_LEVEL"] = "3"  # 0=VERBOSE, 1=INFO, 2=WARNING, 3=ERROR, 4=FATAL
-################################################################
+os.environ["ORT_LOG_SEVERITY_LEVEL"] = "3"
 import argparse
 import subprocess
 import tempfile

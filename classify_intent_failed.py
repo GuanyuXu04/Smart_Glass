@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-intent_classifier.py
-
-Lightweight hybrid intent classifier for navigation vs scene description.
-- Step 1: fast regex to catch obvious cases
-- Step 2: tiny embedding model (all-MiniLM-L6-v2, ~90MB) for fuzzy/zero-shot decisions
-
-Outputs (stdout):
-  1, <destination>    # navigation
-  2, <question>       # description with a specific question
-  2                   # description (general, no specific question)
-  0                   # unclear
-"""
+# Classify user utterances: navigation (1), scene description (2), or unclear (0).
 
 import argparse
 import sys
@@ -85,11 +73,12 @@ TRAIL_PUNCT = re.compile(r"^[\s,:;\-\"]+|[\s,:;\-\"]+$")
 
 
 def matches_any(patterns: List[str], text: str) -> bool:
+    # Check if any regex pattern matches text
     return any(re.search(p, text, flags=re.IGNORECASE) for p in patterns)
 
 
 def extract_destination(text: str) -> Optional[str]:
-    # Normalize whitespace
+    # Extract destination name from parsed patterns (e.g., "go to EECS" -> "EECS")
     t = text.strip()
     for pat in DEST_PATTERNS:
         m = pat.search(t)
@@ -97,18 +86,14 @@ def extract_destination(text: str) -> Optional[str]:
             dest = m.group("dest") if "dest" in m.groupdict() else None
             if not dest:
                 continue
-            # Clean up destination
+            # Clean up destination: strip punctuation, articles, verbs
             dest = TRAIL_PUNCT.sub("", dest)
             dest = DEST_STRIP.sub(" ", dest)
             dest = _strip_tail_phrases(dest)
             dest = re.sub(r"\s+", " ", dest).strip()
-            # If the dest still contains a leading verb like 'go', trim it
             dest = re.sub(r"^(go|head|navigate|walk|drive)\s+", "", dest, flags=re.IGNORECASE)
-            # Trim trailing polite words
             dest = re.sub(r"\b(?:please|thanks?)$", "", dest, flags=re.IGNORECASE).strip()
-            # Drop leading 'to'
             dest = re.sub(r"^to\s+", "", dest, flags=re.IGNORECASE).strip()
-            # Drop leading articles
             dest = re.sub(r"^(?:the|a|an)\s+", "", dest, flags=re.IGNORECASE).strip()
             if dest:
                 return dest
