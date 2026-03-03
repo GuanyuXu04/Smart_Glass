@@ -1,6 +1,6 @@
 # INSIGHT: In-device Navigation and Scene Interpretation Glasses for Human-centered Travel
 
-**EECS 473 Project** – A voice-activated smart glasses system for low-vision navigation and scene understanding.
+**EECS 473 Project** – A voice-activated smart glasses system for low-vision navigation and scene understanding. [Project Website](https://xuguaaaanyu.github.io/portfolio/01.SmartGlass/)
 
 ---
 
